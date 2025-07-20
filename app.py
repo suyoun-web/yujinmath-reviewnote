@@ -1,82 +1,127 @@
-
 import streamlit as st
 import pandas as pd
-from io import BytesIO
-from zipfile import ZipFile
+import zipfile
+import io
+from pathlib import Path
 from docx import Document
-from docx.shared import Pt
-from docx.oxml.ns import qn
+import docx.shared
+import base64
+from fpdf import FPDF
+from PIL import Image
+import tempfile
 import os
 
-def set_korean_font(doc):
-    style = doc.styles['Normal']
-    font = style.font
-    font.name = 'Malgun Gothic'
-    font.size = Pt(10)
-    rFonts = style.element.rPr.rFonts
-    rFonts.set(qn('w:eastAsia'), 'Malgun Gothic')
-
-def generate_review_note(name, title, module1_dir, module2_dir, wrong1, wrong2):
-    doc = Document()
-    set_korean_font(doc)
-    doc.add_paragraph(f"<{name}_{title}>").runs[0].bold = True
-
-    if wrong1:
-        doc.add_paragraph("<Module1>").runs[0].bold = True
-        for q in wrong1:
-            img_path = os.path.join(module1_dir, f"{q}.png")
-            if os.path.exists(img_path):
-                doc.add_picture(img_path, width=None)
-                doc.add_paragraph("")
-
-    if wrong2:
-        doc.add_paragraph("<Module2>").runs[0].bold = True
-        for q in wrong2:
-            img_path = os.path.join(module2_dir, f"{q}.png")
-            if os.path.exists(img_path):
-                doc.add_picture(img_path, width=None)
-                doc.add_paragraph("")
-
-    file_stream = BytesIO()
-    doc.save(file_stream)
-    file_stream.seek(0)
-    return file_stream
-
+st.set_page_config(page_title="SAT 오답노트 생성기", layout="centered")
 st.title("📝 SAT 오답노트 생성기")
 
-title = st.text_input("📌 문서 제목 (예: 25 SAT MATH S2 만점반 Mock3)")
-module1_zip = st.file_uploader("📂 Module1 이미지 ZIP", type="zip", key="m1")
-module2_zip = st.file_uploader("📂 Module2 이미지 ZIP", type="zip", key="m2")
-excel_file = st.file_uploader("📋 오답노트 엑셀 업로드", type=["xlsx"])
+# 예시 엑셀 데이터프레임
+example_df = pd.DataFrame({
+    "이름": ["홍길동", "김민지"],
+    "문서제목": ["25 SAT MATH S2 만점반 Mock3", "25 SAT MATH S2 만점반 Mock3"],
+    "Module1": ["1,3,5", ""],
+    "Module2": ["", "2,4"]
+})
 
-if title and module1_zip and module2_zip and excel_file:
-    with ZipFile(module1_zip) as m1zip:
-        m1zip.extractall("/tmp/module1")
-    with ZipFile(module2_zip) as m2zip:
-        m2zip.extractall("/tmp/module2")
+# 📥 예시 엑셀 다운로드
+def get_example_excel_download():
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+        example_df.to_excel(writer, index=False, sheet_name='오답노트')
+    buffer.seek(0)
+    b64 = base64.b64encode(buffer.read()).decode()
+    href = f'<a href="data:application/octet-stream;base64,{b64}" download="예시_오답노트_양식.xlsx">📥 예시 엑셀파일 다운로드</a>'
+    return href
 
-    df = pd.read_excel(excel_file)
-    df.columns = df.columns.str.strip()  # 열 이름 공백 제거
-    df = df.dropna(how='all')
+# ⬇ 예시 엑셀 표시 및 다운로드
+st.markdown("### 📊 예시 엑셀 양식")
+st.dataframe(example_df)
+st.markdown(get_example_excel_download(), unsafe_allow_html=True)
 
-    # 열 이름이 자동 감지되도록 처리
-    col_map = {col.lower(): col for col in df.columns}
-    name_col = col_map.get('이름') or col_map.get('name')
-    mod1_col = col_map.get('module1')
-    mod2_col = col_map.get('module2')
+# 📁 파일 업로드
+st.markdown("### 📦 오답노트 파일 업로드")
+uploaded_zip = st.file_uploader("M1, M2 폴더 포함된 ZIP 파일 업로드", type="zip")
+uploaded_excel = st.file_uploader("오답노트 엑셀 파일 업로드 (.xlsx)", type=["xlsx"])
 
-    file_buffer = BytesIO()
-    with ZipFile(file_buffer, 'w') as zip_out:
+# PDF 생성 함수
+def create_pdf(name, title, m1_images, m2_images, m1_nums, m2_nums):
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+    pdf.set_font("Arial", 'B', 14)
+    pdf.cell(0, 10, f"{name}_{title}", ln=True)
+
+    if m1_nums:
+        pdf.set_font("Arial", 'B', 12)
+        pdf.cell(0, 10, "Module 1", ln=True)
+        for num in m1_nums:
+            img_io = m1_images.get(f"{num}.png")
+            if img_io:
+                pdf.set_font("Arial", '', 11)
+                pdf.cell(0, 8, f"문항 {num}", ln=True)
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp_img:
+                    tmp_img.write(img_io.read())
+                    tmp_img_path = tmp_img.name
+                pdf.image(tmp_img_path, w=170)
+                os.remove(tmp_img_path)
+
+    if m2_nums:
+        pdf.set_font("Arial", 'B', 12)
+        pdf.cell(0, 10, "Module 2", ln=True)
+        for num in m2_nums:
+            img_io = m2_images.get(f"{num}.png")
+            if img_io:
+                pdf.set_font("Arial", '', 11)
+                pdf.cell(0, 8, f"문항 {num}", ln=True)
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp_img:
+                    tmp_img.write(img_io.read())
+                    tmp_img_path = tmp_img.name
+                pdf.image(tmp_img_path, w=170)
+                os.remove(tmp_img_path)
+
+    output = io.BytesIO()
+    pdf.output(output)
+    output.seek(0)
+    return output
+
+# 전체 ZIP 파일 생성
+if uploaded_zip and uploaded_excel:
+    with zipfile.ZipFile(uploaded_zip) as z:
+        m1_imgs = {}
+        m2_imgs = {}
+        for f in z.namelist():
+            if f.startswith("M1/") and f.endswith(".png"):
+                m1_imgs[Path(f).name] = io.BytesIO(z.read(f))
+            elif f.startswith("M2/") and f.endswith(".png"):
+                m2_imgs[Path(f).name] = io.BytesIO(z.read(f))
+
+    df = pd.read_excel(uploaded_excel)
+    zip_buffer = io.BytesIO()
+
+    with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zipf:
         for _, row in df.iterrows():
-            name = str(row[name_col]).strip()
-            wrong1 = [] if pd.isna(row[mod1_col]) or row[mod1_col] == 'X' else str(row[mod1_col]).split(',')
-            wrong2 = [] if pd.isna(row[mod2_col]) or row[mod2_col] == 'X' else str(row[mod2_col]).split(',')
+            name = str(row['이름'])
+            title = str(row['문서제목'])
 
-            if not wrong1 and not wrong2:
-                continue
+            m1_list = str(row['Module1']).split(",") if pd.notna(row['Module1']) else []
+            m2_list = str(row['Module2']).split(",") if pd.notna(row['Module2']) else []
 
-            doc_stream = generate_review_note(name, title, "/tmp/module1", "/tmp/module2", wrong1, wrong2)
-            zip_out.writestr(f"{name}_{title}.docx", doc_stream.read())
+            m1_nums = [num.strip() for num in m1_list if num.strip()]
+            m2_nums = [num.strip() for num in m2_list if num.strip()]
+
+            if not m1_nums and not m2_nums:
+                continue  # 생략
+
+            pdf_buffer = create_pdf(name, title, m1_imgs, m2_imgs, m1_nums, m2_nums)
+            zipf.writestr(f"{name}_{title}.pdf", pdf_buffer.getvalue())
+
+    zip_buffer.seek(0)
+    st.markdown("### 📦 전체 ZIP 파일 다운로드")
+    st.download_button(
+        label="📥 ZIP 파일 다운로드",
+        data=zip_buffer,
+        file_name="오답노트_모음.zip",
+        mime="application/zip"
+    )
 
     file_buffer.seek(0)
     st.download_button("📥 오답노트 ZIP 다운로드", file_buffer, file_name=f"{title}_오답노트.zip")
