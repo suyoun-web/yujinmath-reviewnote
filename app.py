@@ -95,6 +95,7 @@ excel_file = st.file_uploader("", type="xlsx")
 
 generate = st.button("📎 오답노트 생성")
 
+# 오답노트 생성 버튼 클릭 시
 if generate and img_zip and excel_file:
     try:
         m1_imgs, m2_imgs = extract_zip_to_dict(img_zip)
@@ -102,7 +103,7 @@ if generate and img_zip and excel_file:
         output_dir = "generated_pdfs"
         os.makedirs(output_dir, exist_ok=True)
 
-        st.session_state.generated_files = []
+        generated_files = []
         for _, row in df.iterrows():
             name = row['이름']
             m1_nums = str(row['Module1']).split(',') if pd.notna(row['Module1']) else []
@@ -110,22 +111,28 @@ if generate and img_zip and excel_file:
             m1_list = [m1_imgs[num.strip()] for num in m1_nums if num.strip() in m1_imgs]
             m2_list = [m2_imgs[num.strip()] for num in m2_nums if num.strip() in m2_imgs]
             pdf_path = create_student_pdf(name, m1_list, m2_list, doc_title, output_dir)
-            st.session_state.generated_files.append((name, pdf_path))
+            generated_files.append((name, pdf_path))
 
-        # ZIP 생성
+        # ZIP 파일 생성 후 session에 저장
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, "w") as zipf:
-            for name, path in st.session_state.generated_files:
+            for name, path in generated_files:
                 zipf.write(path, os.path.basename(path))
         zip_buffer.seek(0)
 
+        st.session_state.generated_files = generated_files
+        st.session_state.zip_buffer = zip_buffer
+
         st.success("✅ 오답노트 PDF 생성 완료!")
-        st.download_button("📁 ZIP 파일 다운로드", zip_buffer, file_name="오답노트_모음.zip")
 
     except Exception as e:
         st.error(f"오류 발생: {e}")
 
-# 개별 PDF 미리보기
+# 항상 ZIP 다운로드 버튼 표시
+if "zip_buffer" in st.session_state:
+    st.download_button("📁 ZIP 파일 다운로드", st.session_state.zip_buffer, file_name="오답노트_모음.zip")
+
+# 개별 미리보기
 if "generated_files" in st.session_state:
     st.markdown("---")
     st.header("👁️ 개별 PDF 미리보기")
