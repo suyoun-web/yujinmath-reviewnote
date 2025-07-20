@@ -57,26 +57,19 @@ def create_student_pdf(name, m1_imgs, m2_imgs, doc_title, output_dir):
     pdf.cell(0, 8, txt=f"<{name}_{doc_title}>", ln=True)
 
     def add_images(title, images):
-    if images:
-        # 이미지 높이 예측 (적당히 여유 있게 100으로 가정)
-        img_est_height = 100
+        if images:
+            img_est_height = 100
+            if title == "Module 2" and pdf.get_y() + 10 + img_est_height > pdf.page_break_trigger:
+                pdf.add_page()
 
-        # 페이지 끝에 너무 가까우면 다음 페이지로 넘기기
-        if title == "Module 2" and pdf.get_y() + 10 + img_est_height > pdf.page_break_trigger:
-            pdf.add_page()
-
-        # 제목 출력
-        pdf.set_font(pdf_font_name, size=10)
-        pdf.cell(0, 8, txt=title, ln=True)
-
-        for img in images:
-            # 이미지 임시 저장
-            img_path = f"temp_{datetime.now().timestamp()}.jpg"
-            img.save(img_path)
-            pdf.image(img_path, w=180)
-            os.remove(img_path)
-            pdf.ln(8)  # 이미지 간 간격
-
+            pdf.set_font(pdf_font_name, size=10)
+            pdf.cell(0, 8, txt=title, ln=True)
+            for img in images:
+                img_path = f"temp_{datetime.now().timestamp()}.jpg"
+                img.save(img_path)
+                pdf.image(img_path, w=180)
+                os.remove(img_path)
+                pdf.ln(8)
 
     add_images("Module 1", m1_imgs)
     add_images("Module 2", m2_imgs)
@@ -104,9 +97,9 @@ img_zip = st.file_uploader("", type="zip")
 st.caption("오답노트 엑셀 파일 업로드 (.xlsx)")
 excel_file = st.file_uploader("", type="xlsx")
 
+generated_files = []
 generate = st.button("📎 오답노트 생성")
 
-# 오답노트 생성 버튼 클릭 시
 if generate and img_zip and excel_file:
     try:
         m1_imgs, m2_imgs = extract_zip_to_dict(img_zip)
@@ -114,7 +107,6 @@ if generate and img_zip and excel_file:
         output_dir = "generated_pdfs"
         os.makedirs(output_dir, exist_ok=True)
 
-        generated_files = []
         for _, row in df.iterrows():
             name = row['이름']
             m1_nums = str(row['Module1']).split(',') if pd.notna(row['Module1']) else []
@@ -124,31 +116,24 @@ if generate and img_zip and excel_file:
             pdf_path = create_student_pdf(name, m1_list, m2_list, doc_title, output_dir)
             generated_files.append((name, pdf_path))
 
-        # ZIP 파일 생성 후 session에 저장
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, "w") as zipf:
             for name, path in generated_files:
                 zipf.write(path, os.path.basename(path))
         zip_buffer.seek(0)
 
-        st.session_state.generated_files = generated_files
-        st.session_state.zip_buffer = zip_buffer
-
         st.success("✅ 오답노트 PDF 생성 완료!")
+        st.download_button("📁 ZIP 파일 다운로드", zip_buffer, file_name="오답노트_모음.zip")
 
     except Exception as e:
         st.error(f"오류 발생: {e}")
 
-# 항상 ZIP 다운로드 버튼 표시
-if "zip_buffer" in st.session_state:
-    st.download_button("📁 ZIP 파일 다운로드", st.session_state.zip_buffer, file_name="오답노트_모음.zip")
-
-# 개별 미리보기
-if "generated_files" in st.session_state:
+if generated_files:
     st.markdown("---")
     st.header("👁️ 개별 PDF 미리보기")
-    selected = st.selectbox("학생 선택", [name for name, _ in st.session_state.generated_files])
+    selected = st.selectbox("학생 선택", [name for name, _ in generated_files])
     if selected:
-        selected_path = dict(st.session_state.generated_files)[selected]
+        generated_dict = {name: path for name, path in generated_files}
+        selected_path = generated_dict[selected]
         with open(selected_path, "rb") as f:
             st.download_button(f"📄 {selected} PDF 다운로드", f, file_name=f"{selected}.pdf")
