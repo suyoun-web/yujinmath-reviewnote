@@ -1,129 +1,142 @@
 import streamlit as st
+import pandas as pd
 import zipfile
 import os
-import tempfile
-import pandas as pd
-from PIL import Image
 import io
+from PIL import Image
 from fpdf import FPDF
-import base64
-import shutil
+from datetime import datetime
 
-def load_example_excel():
-    with open("예시_오답노트_양식_수정본.xlsx", "rb") as f:
-        return f.read()
+# PDF 생성용 폰트 경로
+FONT_PATH = "fonts/NanumGothic.ttf"
+
+# NanumGothic 폰트를 fpdf에 등록
+pdf_font_name = "NanumGothic"
+if os.path.exists(FONT_PATH):
+    from fpdf import FPDF
+    class KoreanPDF(FPDF):
+        def __init__(self):
+            super().__init__()
+            self.add_font(pdf_font_name, '', FONT_PATH, uni=True)
+            self.set_font(pdf_font_name, size=12)
+else:
+    st.error("⚠️ 한글 PDF 생성을 위해 NanumGothic.ttf 파일이 fonts 폴더에 있어야 합니다.")
+
+# 예시 엑셀 다운로드용 버퍼 생성
+def get_example_excel():
+    output = io.BytesIO()
+    example_df = pd.DataFrame({
+        '이름': ['홍길동', '김철수'],
+        'Module1': ['1,3,5', '2,4'],
+        'Module2': ['2,6', '1,3']
+    })
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        example_df.to_excel(writer, index=False)
+    output.seek(0)
+    return output
 
 def save_uploaded_file(uploaded_file, save_path):
     with open(save_path, "wb") as f:
-        f.write(uploaded_file.read())
+        f.write(uploaded_file.getbuffer())
 
-def extract_images(zip_file, temp_dir):
-    with zipfile.ZipFile(zip_file, 'r') as zip_ref:
-        zip_ref.extractall(temp_dir)
+def extract_zip_to_dict(zip_file):
+    img_dict = {}
+    with zipfile.ZipFile(zip_file) as z:
+        for file in z.namelist():
+            if file.lower().endswith(('.png', '.jpg', '.jpeg')):
+                key = os.path.splitext(os.path.basename(file))[0]
+                with z.open(file) as f:
+                    img = Image.open(f).convert("RGB")
+                    img_dict[key] = img
+    return img_dict
 
-def collect_images(folder_path):
-    image_extensions = ['.png', '.jpg', '.jpeg']
-    images = []
-    for root, _, files in os.walk(folder_path):
-        for file in sorted(files):
-            if any(file.lower().endswith(ext) for ext in image_extensions):
-                images.append(os.path.join(root, file))
-    return images
+def create_student_pdf(name, m1_imgs, m2_imgs, doc_title, output_dir):
+    pdf = KoreanPDF()
+    pdf.add_page()
+    pdf.set_font(pdf_font_name, size=16)
+    pdf.cell(200, 10, txt=f"오답노트: {name}", ln=True)
+    pdf.set_font(pdf_font_name, size=12)
+    pdf.cell(200, 10, txt=doc_title, ln=True)
 
-def create_student_pdf(name, module1_imgs, module2_imgs, doc_title, output_dir):
-    pdf = FPDF()
-    pdf.set_auto_page_break(auto=True, margin=15)
-
-    if module1_imgs:
-        pdf.add_page()
-        pdf.set_font("Arial", 'B', 16)
-        pdf.cell(0, 10, f"{name} - {doc_title} - Module 1", ln=True)
-        for img_path in module1_imgs:
+    def add_images(module_title, images):
+        if images:
             pdf.add_page()
-            pdf.image(img_path, x=10, y=20, w=pdf.w - 20)
+            pdf.set_font(pdf_font_name, size=14)
+            pdf.cell(200, 10, txt=module_title, ln=True)
+            for img in images:
+                pdf.image(img, w=180)
 
-    if module2_imgs:
-        pdf.add_page()
-        pdf.set_font("Arial", 'B', 16)
-        pdf.cell(0, 10, f"{name} - {doc_title} - Module 2", ln=True)
-        for img_path in module2_imgs:
-            pdf.add_page()
-            pdf.image(img_path, x=10, y=20, w=pdf.w - 20)
+    add_images("Module 1", m1_imgs)
+    add_images("Module 2", m2_imgs)
 
-    pdf_output = os.path.join(output_dir, f"{name}_{doc_title}.pdf")
-    pdf.output(pdf_output)
-    return pdf_output
+    pdf_path = os.path.join(output_dir, f"{name}_{doc_title}.pdf")
+    pdf.output(pdf_path)
+    return pdf_path
 
-def create_download_link(zip_path):
-    with open(zip_path, "rb") as f:
-        bytes_data = f.read()
-    b64 = base64.b64encode(bytes_data).decode()
-    href = f'<a href="data:application/zip;base64,{b64}" download="오답노트_전체.zip">📦 전체 ZIP 다운로드</a>'
-    return href
+st.set_page_config(page_title="SAT 오답노트 생성기", layout="centered")
+st.title("📝 SAT 오답노트 생성기")
 
-def main():
-    st.title("📝 SAT 오답노트 생성기")
+st.header("📊 예시 엑셀 양식")
+with st.expander("예시 엑셀파일 열기"):
+    st.dataframe(pd.read_excel(get_example_excel()))
+example = get_example_excel()
+st.download_button("📥 예시 엑셀파일 다운로드", example, file_name="예시_오답노트_양식.xlsx")
 
-    st.subheader("📊 예시 엑셀 양식")
-    with st.expander("예시 엑셀파일 양식 보기"):
-        st.write("아래 예시와 같이 이름, Module1, Module2 컬럼만 포함해주세요.")
-        example_df = pd.read_excel(io.BytesIO(load_example_excel()))
-        st.dataframe(example_df)
+st.header("📦 오답노트 파일 업로드")
+st.caption("M1, M2 폴더 포함된 ZIP 파일 업로드")
+img_zip = st.file_uploader("", type="zip")
 
-    st.markdown("[📥 예시 엑셀파일 다운로드](sandbox:/mnt/data/예시_오답노트_양식_수정본.xlsx)")
+st.caption("오답노트 엑셀 파일 업로드 (.xlsx)")
+excel_file = st.file_uploader("", type="xlsx")
 
-    st.subheader("📦 오답노트 파일 업로드")
-    st.caption("M1, M2 폴더 포함된 ZIP 파일 업로드")
-    image_zip_file = st.file_uploader("Drag and drop file here", type="zip")
+if img_zip and excel_file:
+    try:
+        # 이미지 불러오기
+        m1_imgs, m2_imgs = {}, {}
+        with zipfile.ZipFile(img_zip) as z:
+            for file in z.namelist():
+                if file.lower().endswith(('png', 'jpg', 'jpeg')):
+                    folder = file.split('/')[0].lower()
+                    q_num = os.path.splitext(os.path.basename(file))[0]
+                    with z.open(file) as f:
+                        img = Image.open(f).convert("RGB")
+                        if folder == "m1":
+                            m1_imgs[q_num] = img
+                        elif folder == "m2":
+                            m2_imgs[q_num] = img
 
-    st.caption("오답노트 엑셀 파일 업로드 (.xlsx)")
-    excel_file = st.file_uploader("Drag and drop file here", type="xlsx")
+        df = pd.read_excel(excel_file)
+        output_dir = "generated_pdfs"
+        os.makedirs(output_dir, exist_ok=True)
 
-    doc_title = st.text_input("🖋️ 문서 제목 (예: 25 SAT MATH S2 만점반 Mock3)")
+        generated_files = []
+        for _, row in df.iterrows():
+            name = row['이름']
+            m1_nums = str(row['Module1']).split(',') if pd.notna(row['Module1']) else []
+            m2_nums = str(row['Module2']).split(',') if pd.notna(row['Module2']) else []
+            m1_list = [m1_imgs[num.strip()] for num in m1_nums if num.strip() in m1_imgs]
+            m2_list = [m2_imgs[num.strip()] for num in m2_nums if num.strip() in m2_imgs]
+            doc_title = "SAT 오답노트"
+            pdf_path = create_student_pdf(name, m1_list, m2_list, doc_title, output_dir)
+            generated_files.append((name, pdf_path))
 
-    if st.button("📎 오답노트 자동 생성"):
-        if not image_zip_file or not excel_file or not doc_title:
-            st.error("모든 파일과 문서 제목을 입력해주세요.")
-            return
+        # ZIP 압축
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w") as zipf:
+            for name, path in generated_files:
+                zipf.write(path, os.path.basename(path))
+        zip_buffer.seek(0)
 
-        with tempfile.TemporaryDirectory() as temp_dir:
-            zip_path = os.path.join(temp_dir, "images.zip")
-            save_uploaded_file(image_zip_file, zip_path)
-            extract_images(zip_path, temp_dir)
+        st.success("✅ 오답노트 PDF 생성 완료!")
+        st.download_button("📁 ZIP 파일 다운로드", zip_buffer, file_name="오답노트_모음.zip")
 
-            m1_path = os.path.join(temp_dir, "M1")
-            m2_path = os.path.join(temp_dir, "M2")
+        st.markdown("---")
+        st.header("👁️ 개별 PDF 미리보기")
+        selected = st.selectbox("학생 선택", [name for name, _ in generated_files])
+        if selected:
+            with open(dict(generated_files)[selected], "rb") as f:
+                st.download_button(f"📄 {selected} PDF 다운로드", f, file_name=f"{selected}.pdf")
+                st.pdf(f)
 
-            module1_images = collect_images(m1_path)
-            module2_images = collect_images(m2_path)
-
-            df = pd.read_excel(excel_file)
-            output_dir = os.path.join(temp_dir, "output")
-            os.makedirs(output_dir, exist_ok=True)
-
-            student_pdfs = []
-
-            for _, row in df.iterrows():
-                name = str(row['이름'])
-                m1_nums = str(row['Module1']).split(',') if pd.notna(row['Module1']) else []
-                m2_nums = str(row['Module2']).split(',') if pd.notna(row['Module2']) else []
-
-                m1_imgs = [img for img in module1_images if any(img.lower().endswith(f"{num.strip()}.png") or img.lower().endswith(f"{num.strip()}.jpg") or img.lower().endswith(f"{num.strip()}.jpeg") for num in m1_nums)]
-                m2_imgs = [img for img in module2_images if any(img.lower().endswith(f"{num.strip()}.png") or img.lower().endswith(f"{num.strip()}.jpg") or img.lower().endswith(f"{num.strip()}.jpeg") for num in m2_nums)]
-
-                pdf_path = create_student_pdf(name, m1_imgs, m2_imgs, doc_title, output_dir)
-
-                with open(pdf_path, "rb") as f:
-                    st.download_button(f"📄 {name} 오답노트 미리보기", f, file_name=os.path.basename(pdf_path), mime="application/pdf")
-
-                student_pdfs.append(pdf_path)
-
-            final_zip = os.path.join(temp_dir, "오답노트_전체.zip")
-            with zipfile.ZipFile(final_zip, 'w') as zipf:
-                for pdf_path in student_pdfs:
-                    zipf.write(pdf_path, os.path.basename(pdf_path))
-
-            st.markdown(create_download_link(final_zip), unsafe_allow_html=True)
-
-if __name__ == "__main__":
-    main()
+    except Exception as e:
+        st.error(f"오류 발생: {e}")
