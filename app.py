@@ -8,12 +8,9 @@ from fpdf import FPDF
 from datetime import datetime
 
 # PDF 생성용 폰트 경로
-FONT_PATH = "fonts/NanumGothic.ttf"
-
-# NanumGothic 폰트를 fpdf에 등록 (Regular + Bold)
-pdf_font_name = "NanumGothic"
 FONT_REGULAR = "fonts/NanumGothic.ttf"
 FONT_BOLD = "fonts/NanumGothicBold.ttf"
+pdf_font_name = "NanumGothic"
 
 if os.path.exists(FONT_REGULAR) and os.path.exists(FONT_BOLD):
     class KoreanPDF(FPDF):
@@ -38,20 +35,20 @@ def get_example_excel():
     output.seek(0)
     return output
 
-def save_uploaded_file(uploaded_file, save_path):
-    with open(save_path, "wb") as f:
-        f.write(uploaded_file.getbuffer())
-
 def extract_zip_to_dict(zip_file):
-    img_dict = {}
+    m1_imgs, m2_imgs = {}, {}
     with zipfile.ZipFile(zip_file) as z:
         for file in z.namelist():
-            if file.lower().endswith(('.png', '.jpg', '.jpeg')):
-                key = os.path.splitext(os.path.basename(file))[0]
+            if file.lower().endswith(('png', 'jpg', 'jpeg')):
+                folder = file.split('/')[0].lower()
+                q_num = os.path.splitext(os.path.basename(file))[0]
                 with z.open(file) as f:
                     img = Image.open(f).convert("RGB")
-                    img_dict[key] = img
-    return img_dict
+                    if folder == "m1":
+                        m1_imgs[q_num] = img
+                    elif folder == "m2":
+                        m2_imgs[q_num] = img
+    return m1_imgs, m2_imgs
 
 def create_student_pdf(name, m1_imgs, m2_imgs, doc_title, output_dir):
     pdf = KoreanPDF()
@@ -59,10 +56,10 @@ def create_student_pdf(name, m1_imgs, m2_imgs, doc_title, output_dir):
     pdf.set_font(pdf_font_name, style='B', size=10)
     pdf.cell(0, 8, txt=f"<{name}_{doc_title}>", ln=True)
 
-    def add_images(module_title, images):
+    def add_images(title, images):
         if images:
             pdf.set_font(pdf_font_name, size=10)
-            pdf.cell(0, 8, txt=module_title, ln=True)
+            pdf.cell(0, 8, txt=title, ln=True)
             for img in images:
                 img_path = f"temp_{datetime.now().timestamp()}.jpg"
                 img.save(img_path)
@@ -96,21 +93,11 @@ img_zip = st.file_uploader("", type="zip")
 st.caption("오답노트 엑셀 파일 업로드 (.xlsx)")
 excel_file = st.file_uploader("", type="xlsx")
 
-if img_zip and excel_file:
-    try:
-        m1_imgs, m2_imgs = {}, {}
-        with zipfile.ZipFile(img_zip) as z:
-            for file in z.namelist():
-                if file.lower().endswith(('png', 'jpg', 'jpeg')):
-                    folder = file.split('/')[0].lower()
-                    q_num = os.path.splitext(os.path.basename(file))[0]
-                    with z.open(file) as f:
-                        img = Image.open(f).convert("RGB")
-                        if folder == "m1":
-                            m1_imgs[q_num] = img
-                        elif folder == "m2":
-                            m2_imgs[q_num] = img
+generate = st.button("📎 오답노트 생성")
 
+if generate and img_zip and excel_file:
+    try:
+        m1_imgs, m2_imgs = extract_zip_to_dict(img_zip)
         df = pd.read_excel(excel_file)
         output_dir = "generated_pdfs"
         os.makedirs(output_dir, exist_ok=True)
