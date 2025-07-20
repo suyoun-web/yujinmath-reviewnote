@@ -102,7 +102,7 @@ if generate and img_zip and excel_file:
         output_dir = "generated_pdfs"
         os.makedirs(output_dir, exist_ok=True)
 
-        generated_files = []
+        st.session_state.generated_files = []
         for _, row in df.iterrows():
             name = row['이름']
             m1_nums = str(row['Module1']).split(',') if pd.notna(row['Module1']) else []
@@ -110,25 +110,27 @@ if generate and img_zip and excel_file:
             m1_list = [m1_imgs[num.strip()] for num in m1_nums if num.strip() in m1_imgs]
             m2_list = [m2_imgs[num.strip()] for num in m2_nums if num.strip() in m2_imgs]
             pdf_path = create_student_pdf(name, m1_list, m2_list, doc_title, output_dir)
-            generated_files.append((name, pdf_path))
+            st.session_state.generated_files.append((name, pdf_path))
 
+        # ZIP 생성
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, "w") as zipf:
-            for name, path in generated_files:
+            for name, path in st.session_state.generated_files:
                 zipf.write(path, os.path.basename(path))
         zip_buffer.seek(0)
 
         st.success("✅ 오답노트 PDF 생성 완료!")
         st.download_button("📁 ZIP 파일 다운로드", zip_buffer, file_name="오답노트_모음.zip")
 
-        st.markdown("---")
-        st.header("👁️ 개별 PDF 미리보기")
-        selected = st.selectbox("학생 선택", [name for name, _ in generated_files])
-        if selected:
-            generated_dict = {name: path for name, path in generated_files}
-            selected_path = generated_dict[selected]
-            with open(selected_path, "rb") as f:
-                st.download_button(f"📄 {selected} PDF 다운로드", f, file_name=f"{selected}.pdf")
-
     except Exception as e:
         st.error(f"오류 발생: {e}")
+
+# 개별 PDF 미리보기
+if "generated_files" in st.session_state:
+    st.markdown("---")
+    st.header("👁️ 개별 PDF 미리보기")
+    selected = st.selectbox("학생 선택", [name for name, _ in st.session_state.generated_files])
+    if selected:
+        selected_path = dict(st.session_state.generated_files)[selected]
+        with open(selected_path, "rb") as f:
+            st.download_button(f"📄 {selected} PDF 다운로드", f, file_name=f"{selected}.pdf")
