@@ -1,6 +1,6 @@
-
 streamlit
 pandas
-python-docx
 openpyxl
+fpdf
+xlsxwriter
 Pillow
