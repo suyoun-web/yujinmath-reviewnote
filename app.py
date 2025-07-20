@@ -3,8 +3,6 @@ import pandas as pd
 import zipfile
 import io
 from pathlib import Path
-from docx import Document
-import docx.shared
 import base64
 from fpdf import FPDF
 from PIL import Image
