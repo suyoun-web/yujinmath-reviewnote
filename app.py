@@ -13,12 +13,11 @@ FONT_PATH = "fonts/NanumGothic.ttf"
 # NanumGothic 폰트를 fpdf에 등록
 pdf_font_name = "NanumGothic"
 if os.path.exists(FONT_PATH):
-    from fpdf import FPDF
     class KoreanPDF(FPDF):
         def __init__(self):
             super().__init__()
             self.add_font(pdf_font_name, '', FONT_PATH, uni=True)
-            self.set_font(pdf_font_name, size=12)
+            self.set_font(pdf_font_name, size=10)
 else:
     st.error("⚠️ 한글 PDF 생성을 위해 NanumGothic.ttf 파일이 fonts 폴더에 있어야 합니다.")
 
@@ -53,21 +52,19 @@ def extract_zip_to_dict(zip_file):
 def create_student_pdf(name, m1_imgs, m2_imgs, doc_title, output_dir):
     pdf = KoreanPDF()
     pdf.add_page()
-    pdf.set_font(pdf_font_name, size=16)
-    pdf.cell(200, 10, txt=f"오답노트: {name}", ln=True)
-    pdf.set_font(pdf_font_name, size=12)
-    pdf.cell(200, 10, txt=doc_title, ln=True)
+    pdf.set_font(pdf_font_name, style='B', size=10)
+    pdf.cell(0, 8, txt=f"<{name}_{doc_title}>", ln=True)
 
     def add_images(module_title, images):
         if images:
-            pdf.add_page()
-            pdf.set_font(pdf_font_name, size=14)
-            pdf.cell(200, 10, txt=module_title, ln=True)
+            pdf.set_font(pdf_font_name, size=10)
+            pdf.cell(0, 8, txt=module_title, ln=True)
             for img in images:
                 img_path = f"temp_{datetime.now().timestamp()}.jpg"
                 img.save(img_path)
                 pdf.image(img_path, w=180)
                 os.remove(img_path)
+                pdf.ln(8)  # 이미지 사이 간격
 
     add_images("Module 1", m1_imgs)
     add_images("Module 2", m2_imgs)
@@ -97,7 +94,6 @@ excel_file = st.file_uploader("", type="xlsx")
 
 if img_zip and excel_file:
     try:
-        # 이미지 불러오기
         m1_imgs, m2_imgs = {}, {}
         with zipfile.ZipFile(img_zip) as z:
             for file in z.namelist():
@@ -125,7 +121,6 @@ if img_zip and excel_file:
             pdf_path = create_student_pdf(name, m1_list, m2_list, doc_title, output_dir)
             generated_files.append((name, pdf_path))
 
-        # ZIP 압축
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, "w") as zipf:
             for name, path in generated_files:
