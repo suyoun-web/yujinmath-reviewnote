@@ -1,1 +1,0 @@
-# yujinmath-reviewnote
