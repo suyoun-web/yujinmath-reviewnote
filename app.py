@@ -57,15 +57,26 @@ def create_student_pdf(name, m1_imgs, m2_imgs, doc_title, output_dir):
     pdf.cell(0, 8, txt=f"<{name}_{doc_title}>", ln=True)
 
     def add_images(title, images):
-        if images:
-            pdf.set_font(pdf_font_name, size=10)
-            pdf.cell(0, 8, txt=title, ln=True)
-            for img in images:
-                img_path = f"temp_{datetime.now().timestamp()}.jpg"
-                img.save(img_path)
-                pdf.image(img_path, w=180)
-                os.remove(img_path)
-                pdf.ln(8)  # 이미지 사이 간격
+    if images:
+        # 이미지 높이 예측 (적당히 여유 있게 100으로 가정)
+        img_est_height = 100
+
+        # 페이지 끝에 너무 가까우면 다음 페이지로 넘기기
+        if title == "Module 2" and pdf.get_y() + 10 + img_est_height > pdf.page_break_trigger:
+            pdf.add_page()
+
+        # 제목 출력
+        pdf.set_font(pdf_font_name, size=10)
+        pdf.cell(0, 8, txt=title, ln=True)
+
+        for img in images:
+            # 이미지 임시 저장
+            img_path = f"temp_{datetime.now().timestamp()}.jpg"
+            img.save(img_path)
+            pdf.image(img_path, w=180)
+            os.remove(img_path)
+            pdf.ln(8)  # 이미지 간 간격
+
 
     add_images("Module 1", m1_imgs)
     add_images("Module 2", m2_imgs)
