@@ -64,7 +64,10 @@ def create_student_pdf(name, m1_imgs, m2_imgs, doc_title, output_dir):
             pdf.set_font(pdf_font_name, size=14)
             pdf.cell(200, 10, txt=module_title, ln=True)
             for img in images:
-                pdf.image(img, w=180)
+                img_path = f"temp_{datetime.now().timestamp()}.jpg"
+                img.save(img_path)
+                pdf.image(img_path, w=180)
+                os.remove(img_path)
 
     add_images("Module 1", m1_imgs)
     add_images("Module 2", m2_imgs)
@@ -81,6 +84,9 @@ with st.expander("예시 엑셀파일 열기"):
     st.dataframe(pd.read_excel(get_example_excel()))
 example = get_example_excel()
 st.download_button("📥 예시 엑셀파일 다운로드", example, file_name="예시_오답노트_양식.xlsx")
+
+st.header("📄 문서 제목 입력")
+doc_title = st.text_input("문서 제목 (예: 25 SAT MATH S2 만점반 Mock3)", value="SAT 오답노트")
 
 st.header("📦 오답노트 파일 업로드")
 st.caption("M1, M2 폴더 포함된 ZIP 파일 업로드")
@@ -116,7 +122,6 @@ if img_zip and excel_file:
             m2_nums = str(row['Module2']).split(',') if pd.notna(row['Module2']) else []
             m1_list = [m1_imgs[num.strip()] for num in m1_nums if num.strip() in m1_imgs]
             m2_list = [m2_imgs[num.strip()] for num in m2_nums if num.strip() in m2_imgs]
-            doc_title = "SAT 오답노트"
             pdf_path = create_student_pdf(name, m1_list, m2_list, doc_title, output_dir)
             generated_files.append((name, pdf_path))
 
@@ -134,9 +139,10 @@ if img_zip and excel_file:
         st.header("👁️ 개별 PDF 미리보기")
         selected = st.selectbox("학생 선택", [name for name, _ in generated_files])
         if selected:
-            with open(dict(generated_files)[selected], "rb") as f:
+            generated_dict = {name: path for name, path in generated_files}
+            selected_path = generated_dict[selected]
+            with open(selected_path, "rb") as f:
                 st.download_button(f"📄 {selected} PDF 다운로드", f, file_name=f"{selected}.pdf")
-                st.pdf(f)
 
     except Exception as e:
         st.error(f"오류 발생: {e}")
