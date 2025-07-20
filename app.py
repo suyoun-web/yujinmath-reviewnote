@@ -10,16 +10,20 @@ from datetime import datetime
 # PDF 생성용 폰트 경로
 FONT_PATH = "fonts/NanumGothic.ttf"
 
-# NanumGothic 폰트를 fpdf에 등록
+# NanumGothic 폰트를 fpdf에 등록 (Regular + Bold)
 pdf_font_name = "NanumGothic"
-if os.path.exists(FONT_PATH):
+FONT_REGULAR = "fonts/NanumGothic.ttf"
+FONT_BOLD = "fonts/NanumGothicBold.ttf"
+
+if os.path.exists(FONT_REGULAR) and os.path.exists(FONT_BOLD):
     class KoreanPDF(FPDF):
         def __init__(self):
             super().__init__()
-            self.add_font(pdf_font_name, '', FONT_PATH, uni=True)
+            self.add_font(pdf_font_name, '', FONT_REGULAR, uni=True)
+            self.add_font(pdf_font_name, 'B', FONT_BOLD, uni=True)
             self.set_font(pdf_font_name, size=10)
 else:
-    st.error("⚠️ 한글 PDF 생성을 위해 NanumGothic.ttf 파일이 fonts 폴더에 있어야 합니다.")
+    st.error("⚠️ 한글 PDF 생성을 위해 fonts 폴더에 NanumGothic.ttf 와 NanumGothicBold.ttf 모두 필요합니다.")
 
 # 예시 엑셀 다운로드용 버퍼 생성
 def get_example_excel():
