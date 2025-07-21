@@ -52,17 +52,20 @@ def extract_zip_to_dict(zip_file):
 
 def create_student_pdf(name, m1_imgs, m2_imgs, doc_title, output_dir):
     pdf = KoreanPDF()
+    pdf.set_margins(left=25.4, top=30.0, right=25.4)  # cm → mm: 2.54cm = 25.4mm, 3cm = 30.0mm
     pdf.add_page()
     pdf.set_font(pdf_font_name, style='B', size=10)
     pdf.cell(0, 8, txt=f"<{name}_{doc_title}>", ln=True)
 
     def add_images(title, images):
         img_est_height = 100
+        module_title = "<Module1>" if title == "Module 1" else "<Module2>"
+
         if title == "Module 2" and pdf.get_y() + 10 + (img_est_height if images else 0) > pdf.page_break_trigger:
             pdf.add_page()
 
         pdf.set_font(pdf_font_name, size=10)
-        pdf.cell(0, 8, txt=title, ln=True)
+        pdf.cell(0, 8, txt=module_title, ln=True)
         if images:
             for img in images:
                 img_path = f"temp_{datetime.now().timestamp()}.jpg"
@@ -71,7 +74,7 @@ def create_student_pdf(name, m1_imgs, m2_imgs, doc_title, output_dir):
                 os.remove(img_path)
                 pdf.ln(8)
         else:
-            pdf.ln(8)  # 이미지가 없더라도 여백 삽입
+            pdf.ln(8)  # 이미지가 없더라도 공간 확보용
 
     add_images("Module 1", m1_imgs)
     add_images("Module 2", m2_imgs)
