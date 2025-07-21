@@ -57,19 +57,21 @@ def create_student_pdf(name, m1_imgs, m2_imgs, doc_title, output_dir):
     pdf.cell(0, 8, txt=f"<{name}_{doc_title}>", ln=True)
 
     def add_images(title, images):
-        if images:
-            img_est_height = 100
-            if title == "Module 2" and pdf.get_y() + 10 + img_est_height > pdf.page_break_trigger:
-                pdf.add_page()
+        img_est_height = 100
+        if title == "Module 2" and pdf.get_y() + 10 + (img_est_height if images else 0) > pdf.page_break_trigger:
+            pdf.add_page()
 
-            pdf.set_font(pdf_font_name, size=10)
-            pdf.cell(0, 8, txt=title, ln=True)
+        pdf.set_font(pdf_font_name, size=10)
+        pdf.cell(0, 8, txt=title, ln=True)
+        if images:
             for img in images:
                 img_path = f"temp_{datetime.now().timestamp()}.jpg"
                 img.save(img_path)
                 pdf.image(img_path, w=180)
                 os.remove(img_path)
                 pdf.ln(8)
+        else:
+            pdf.ln(8)  # 이미지가 없더라도 여백 삽입
 
     add_images("Module 1", m1_imgs)
     add_images("Module 2", m2_imgs)
