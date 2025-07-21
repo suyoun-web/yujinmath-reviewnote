@@ -7,7 +7,7 @@ from PIL import Image
 from fpdf import FPDF
 from datetime import datetime
 
-# 폰트 경로
+# PDF 생성용 폰트 경로
 FONT_REGULAR = "fonts/NanumGothic.ttf"
 FONT_BOLD = "fonts/NanumGothicBold.ttf"
 pdf_font_name = "NanumGothic"
@@ -35,7 +35,6 @@ def get_example_excel():
     output.seek(0)
     return output
 
-# ZIP 내부 이미지 정리
 def extract_zip_to_dict(zip_file):
     m1_imgs, m2_imgs = {}, {}
     with zipfile.ZipFile(zip_file) as z:
@@ -51,7 +50,6 @@ def extract_zip_to_dict(zip_file):
                         m2_imgs[q_num] = img
     return m1_imgs, m2_imgs
 
-# 학생 PDF 생성
 def create_student_pdf(name, m1_imgs, m2_imgs, doc_title, output_dir):
     pdf = KoreanPDF()
     pdf.add_page()
@@ -80,7 +78,6 @@ def create_student_pdf(name, m1_imgs, m2_imgs, doc_title, output_dir):
     pdf.output(pdf_path)
     return pdf_path
 
-# Streamlit 앱 구성
 st.set_page_config(page_title="SAT 오답노트 생성기", layout="centered")
 st.title("📝 SAT 오답노트 생성기")
 
@@ -95,60 +92,48 @@ doc_title = st.text_input("문서 제목 (예: 25 SAT MATH S2 만점반 Mock3)",
 
 st.header("📦 오답노트 파일 업로드")
 st.caption("M1, M2 폴더 포함된 ZIP 파일 업로드")
-img_zip = st.file_uploader("문제 ZIP 파일", type="zip")
+img_zip = st.file_uploader("", type="zip")
 
 st.caption("오답노트 엑셀 파일 업로드 (.xlsx)")
-excel_file = st.file_uploader("오답 정보 엑셀 파일", type="xlsx")
+excel_file = st.file_uploader("", type="xlsx")
 
-# 상태 저장용 session_state
-if 'generated_files' not in st.session_state:
-    st.session_state.generated_files = []
-if 'zip_buffer' not in st.session_state:
-    st.session_state.zip_buffer = None
+generated_files = []
+generate = st.button("📎 오답노트 생성")
 
-# 생성 버튼
-if st.button("📎 오답노트 생성"):
-    if img_zip and excel_file:
-        try:
-            m1_imgs, m2_imgs = extract_zip_to_dict(img_zip)
-            df = pd.read_excel(excel_file)
-            output_dir = "generated_pdfs"
-            os.makedirs(output_dir, exist_ok=True)
+if generate and img_zip and excel_file:
+    try:
+        m1_imgs, m2_imgs = extract_zip_to_dict(img_zip)
+        df = pd.read_excel(excel_file)
+        output_dir = "generated_pdfs"
+        os.makedirs(output_dir, exist_ok=True)
 
-            st.session_state.generated_files = []
-            for _, row in df.iterrows():
-                name = row['이름']
-                m1_nums = str(row['Module1']).split(',') if pd.notna(row['Module1']) else []
-                m2_nums = str(row['Module2']).split(',') if pd.notna(row['Module2']) else []
-                m1_list = [m1_imgs[num.strip()] for num in m1_nums if num.strip() in m1_imgs]
-                m2_list = [m2_imgs[num.strip()] for num in m2_nums if num.strip() in m2_imgs]
-                pdf_path = create_student_pdf(name, m1_list, m2_list, doc_title, output_dir)
-                st.session_state.generated_files.append((name, pdf_path))
+        for _, row in df.iterrows():
+            name = row['이름']
+            m1_nums = str(row['Module1']).split(',') if pd.notna(row['Module1']) else []
+            m2_nums = str(row['Module2']).split(',') if pd.notna(row['Module2']) else []
+            m1_list = [m1_imgs[num.strip()] for num in m1_nums if num.strip() in m1_imgs]
+            m2_list = [m2_imgs[num.strip()] for num in m2_nums if num.strip() in m2_imgs]
+            pdf_path = create_student_pdf(name, m1_list, m2_list, doc_title, output_dir)
+            generated_files.append((name, pdf_path))
 
-            zip_buffer = io.BytesIO()
-            with zipfile.ZipFile(zip_buffer, "w") as zipf:
-                for name, path in st.session_state.generated_files:
-                    zipf.write(path, os.path.basename(path))
-            zip_buffer.seek(0)
-            st.session_state.zip_buffer = zip_buffer
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w") as zipf:
+            for name, path in generated_files:
+                zipf.write(path, os.path.basename(path))
+        zip_buffer.seek(0)
 
-            st.success("✅ 오답노트 PDF 생성 완료!")
+        st.success("✅ 오답노트 PDF 생성 완료!")
+        st.download_button("📁 ZIP 파일 다운로드", zip_buffer, file_name="오답노트_모음.zip")
 
-        except Exception as e:
-            st.error(f"오류 발생: {e}")
-    else:
-        st.warning("ZIP 파일과 엑셀 파일을 모두 업로드해주세요.")
+    except Exception as e:
+        st.error(f"오류 발생: {e}")
 
-# ZIP 다운로드 버튼 항상 유지
-if st.session_state.zip_buffer:
-    st.download_button("📁 ZIP 파일 다운로드", st.session_state.zip_buffer, file_name="오답노트_모음.zip")
-
-# 개별 PDF 미리보기
-if st.session_state.generated_files:
+if generated_files:
     st.markdown("---")
     st.header("👁️ 개별 PDF 미리보기")
-    selected = st.selectbox("학생 선택", [name for name, _ in st.session_state.generated_files])
+    selected = st.selectbox("학생 선택", [name for name, _ in generated_files])
     if selected:
-        selected_path = dict(st.session_state.generated_files)[selected]
+        generated_dict = {name: path for name, path in generated_files}
+        selected_path = generated_dict[selected]
         with open(selected_path, "rb") as f:
             st.download_button(f"📄 {selected} PDF 다운로드", f, file_name=f"{selected}.pdf")
