@@ -93,7 +93,7 @@ example = get_example_excel()
 st.download_button("📥 예시 엑셀파일 다운로드", example, file_name="예시_오답노트_양식.xlsx")
 
 st.header("📄 문서 제목 입력")
-doc_title = st.text_input("문서 제목 (예: 25 SAT MATH S2 만점반 Mock3)", value="SAT 오답노트")
+doc_title = st.text_input("문서 제목 (예: 25 S2 SAT MATH 만점반 Mock Test3)", value="SAT 오답노트")
 
 st.header("📦 오답노트 파일 업로드")
 st.caption("M1, M2 폴더 포함된 ZIP 파일 업로드")
