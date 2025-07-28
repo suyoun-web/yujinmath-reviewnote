@@ -16,6 +16,7 @@ if os.path.exists(FONT_REGULAR) and os.path.exists(FONT_BOLD):
     class KoreanPDF(FPDF):
         def __init__(self):
             super().__init__()
+            self.set_margins(25.4, 30, 25.4)  # 왼쪽, 위쪽, 오른쪽
             self.add_font(pdf_font_name, '', FONT_REGULAR, uni=True)
             self.add_font(pdf_font_name, 'B', FONT_BOLD, uni=True)
             self.set_font(pdf_font_name, size=10)
@@ -52,20 +53,17 @@ def extract_zip_to_dict(zip_file):
 
 def create_student_pdf(name, m1_imgs, m2_imgs, doc_title, output_dir):
     pdf = KoreanPDF()
-    pdf.set_margins(left=25.4, top=30.0, right=25.4)  # cm → mm: 2.54cm = 25.4mm, 3cm = 30.0mm
     pdf.add_page()
     pdf.set_font(pdf_font_name, style='B', size=10)
     pdf.cell(0, 8, txt=f"<{name}_{doc_title}>", ln=True)
 
     def add_images(title, images):
         img_est_height = 100
-        module_title = "<Module1>" if title == "Module 1" else "<Module2>"
-
-        if title == "Module 2" and pdf.get_y() + 10 + (img_est_height if images else 0) > pdf.page_break_trigger:
+        if title == "<Module2>" and pdf.get_y() + 10 + (img_est_height if images else 0) > pdf.page_break_trigger:
             pdf.add_page()
 
         pdf.set_font(pdf_font_name, size=10)
-        pdf.cell(0, 8, txt=module_title, ln=True)
+        pdf.cell(0, 8, txt=title, ln=True)
         if images:
             for img in images:
                 img_path = f"temp_{datetime.now().timestamp()}.jpg"
@@ -73,11 +71,9 @@ def create_student_pdf(name, m1_imgs, m2_imgs, doc_title, output_dir):
                 pdf.image(img_path, w=180)
                 os.remove(img_path)
                 pdf.ln(8)
-        else:
-            pdf.ln(8)  # 이미지가 없더라도 공간 확보용
 
-    add_images("Module 1", m1_imgs)
-    add_images("Module 2", m2_imgs)
+    add_images("<Module1>", m1_imgs)
+    add_images("<Module2>", m2_imgs)
 
     pdf_path = os.path.join(output_dir, f"{name}_{doc_title}.pdf")
     pdf.output(pdf_path)
@@ -93,7 +89,7 @@ example = get_example_excel()
 st.download_button("📥 예시 엑셀파일 다운로드", example, file_name="예시_오답노트_양식.xlsx")
 
 st.header("📄 문서 제목 입력")
-doc_title = st.text_input("문서 제목 (예: 25 S2 SAT MATH 만점반 Mock Test3)", value="SAT 오답노트")
+doc_title = st.text_input("문서 제목 (예: 25 S2 SAT MATH 만점반 Mock Test1)", value="25 S2 SAT MATH 만점반 Mock Test1")
 
 st.header("📦 오답노트 파일 업로드")
 st.caption("M1, M2 폴더 포함된 ZIP 파일 업로드")
@@ -114,6 +110,11 @@ if generate and img_zip and excel_file:
 
         for _, row in df.iterrows():
             name = row['이름']
+
+            # Module1 또는 Module2 중 하나라도 비어 있으면 건너뜀
+            if pd.isna(row['Module1']) or pd.isna(row['Module2']):
+                continue
+
             m1_nums = str(row['Module1']).split(',') if pd.notna(row['Module1']) else []
             m2_nums = str(row['Module2']).split(',') if pd.notna(row['Module2']) else []
             m1_list = [m1_imgs[num.strip()] for num in m1_nums if num.strip() in m1_imgs]
