@@ -360,14 +360,23 @@ with tab2:
                 ws.write(2, 1, "오답률(%)", header_fmt)
                 ws.write(2, 2, "틀린 학생 수", header_fmt)
 
-                center_fmt = wb.add_format({"align": "center", "valign": "vcenter"})
-                ws.set_column(0, 2, 14, center_fmt)
-
-                cond_fmt = wb.add_format({"bold": True, "font_size": 15, "align": "center", "valign": "vcenter"})
+cond_fmt = wb.add_format({
+                    "bold": True,
+                    "font_size": 15,
+                    "align": "center",
+                    "valign": "vcenter",
+                    "bg_color": "#FFF200"   # 노란색 배경
+                })
                 if len(combined) > 0:
-                    ws.conditional_format(3, 1, 3 + len(combined) - 1, 1, {
-                        "type": "cell", "criteria": ">=", "value": 30, "format": cond_fmt
-                    })
+                    ws.conditional_format(
+                        3, 1, 3 + len(combined) - 1, 1,
+                        {
+                            "type": "cell",
+                            "criteria": ">=",
+                            "value": 30,
+                            "format": cond_fmt
+                        }
+                    )
 
             output.seek(0)
             st.download_button(
