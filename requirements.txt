@@ -1,7 +1,6 @@
 
 streamlit
 pandas
-openpyxl
-fpdf
 xlsxwriter
+fpdf2
 Pillow
