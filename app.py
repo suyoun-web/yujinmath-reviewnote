@@ -365,7 +365,7 @@ cond_fmt = wb.add_format({
                     "font_size": 15,
                     "align": "center",
                     "valign": "vcenter",
-                    "bg_color": "#FFF200"   # 노란색 배경
+                    "bg_color": "#FFF200"
                 })
                 if len(combined) > 0:
                     ws.conditional_format(
