@@ -22,8 +22,9 @@ if os.path.exists(FONT_REGULAR) and os.path.exists(FONT_BOLD):
     class KoreanPDF(FPDF):
         def __init__(self):
             super().__init__()
-            # 좌/우 2.54cm(25.4mm), 위 3.0cm(30mm) 여백
+            # 좌/우 2.54cm(25.4mm), 위 3.0cm(30mm) 여백, 아래 2.54cm
             self.set_margins(25.4, 30, 25.4)
+            self.set_auto_page_break(auto=True, margin=25.4)
             self.add_font(pdf_font_name, '', FONT_REGULAR, uni=True)
             self.add_font(pdf_font_name, 'B', FONT_BOLD, uni=True)
             self.set_font(pdf_font_name, size=10)
@@ -31,7 +32,53 @@ else:
     st.error("⚠️ 한글 PDF 생성을 위해 fonts 폴더에 NanumGothic.ttf 와 NanumGothicBold.ttf 모두 필요합니다.")
 
 # ==============================
-# 유틸(오답노트) : 예시 엑셀
+# 유틸: 컬럼 정규화 (두 탭 공용)
+# ==============================
+def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """흔한 변형/오타/공백/대소문자/전각 공백까지 통일해서
+    이름, Module1, Module2 컬럼으로 매핑"""
+    df = df.copy()
+    df.columns = [str(c).strip() for c in df.columns]
+
+    def keyify(s: str) -> str:
+        return (
+            s.replace("\u3000", " ")
+             .lower()
+             .replace(" ", "")
+             .replace("_", "")
+             .replace("-", "")
+        )
+
+    name_alias = {"이름", "name", "학생명", "학생이름"}
+    m1_alias = {"module1", "모듈1", "m1", "module01", "module 1", "모듈 1"}
+    m2_alias = {"module2", "모듈2", "m2", "module02", "module 2", "모듈 2"}
+
+    key_map = {c: keyify(c) for c in df.columns}
+    rename_map = {}
+    found = {"이름": None, "Module1": None, "Module2": None}
+
+    if df.columns.size:
+        name_keys = {keyify(x) for x in name_alias}
+        m1_keys = {keyify(x) for x in m1_alias}
+        m2_keys = {keyify(x) for x in m2_alias}
+
+        for c, k in key_map.items():
+            if k in name_keys and found["이름"] is None:
+                found["이름"] = c
+            elif k in m1_keys and found["Module1"] is None:
+                found["Module1"] = c
+            elif k in m2_keys and found["Module2"] is None:
+                found["Module2"] = c
+
+    if found["이름"]: rename_map[found["이름"]] = "이름"
+    if found["Module1"]: rename_map[found["Module1"]] = "Module1"
+    if found["Module2"]: rename_map[found["Module2"]] = "Module2"
+
+    df = df.rename(columns=rename_map)
+    return df
+
+# ==============================
+# 유틸(오답노트) : 예시 엑셀 & DF
 # ==============================
 def get_example_excel():
     output = io.BytesIO()
@@ -41,9 +88,17 @@ def get_example_excel():
         'Module2': ['2,6', '1,3']
     })
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        example_df.to_excel(writer, index=False)
+        example_df.to_excel(writer, index=False, sheet_name="예시")
     output.seek(0)
     return output
+
+# 수정안 A: openpyxl 없이도 미리보기 가능하도록 예시 DF 직접 생성
+def example_input_df():
+    return pd.DataFrame({
+        '이름': ['홍길동', '김철수'],
+        'Module1': ['1,3,5', '2,4'],
+        'Module2': ['2,6', '1,3']
+    })
 
 # ==============================
 # 유틸(오답노트) : ZIP 파싱
@@ -93,6 +148,8 @@ def create_student_pdf(name, m1_imgs, m2_imgs, doc_title, output_dir):
                 except:
                     pass
                 pdf.ln(8)
+        else:
+            pdf.ln(8)
 
     # 이미지가 없어도 모듈 제목은 항상 출력
     add_images("<Module1>", m1_imgs)
@@ -144,14 +201,15 @@ def compute_module_rates(series, total_questions):
 tab1, tab2 = st.tabs(["📝 오답노트 생성기", "📊 오답률 통계 생성기"])
 
 # =========================================================
-# 탭 1: 오답노트 생성기 (기존 버전 기반)
+# 탭 1: 오답노트 생성기
 # =========================================================
 with tab1:
     st.title("📝 SAT 오답노트 생성기")
 
     st.header("📊 예시 엑셀 양식")
     with st.expander("예시 엑셀파일 열기"):
-        st.dataframe(pd.read_excel(get_example_excel()))
+        # 수정안 A: openpyxl 없이 예시 DataFrame 직접 표시
+        st.dataframe(example_input_df(), use_container_width=True)
     example = get_example_excel()
     st.download_button("📥 예시 엑셀파일 다운로드", example, file_name="예시_오답노트_양식.xlsx")
 
@@ -162,7 +220,7 @@ with tab1:
     st.caption("M1, M2 폴더 포함된 ZIP 파일 업로드")
     img_zip = st.file_uploader("문제 ZIP 파일", type="zip")
 
-    st.caption("오답노트 엑셀 파일 업로드 (.xlsx) — 열 이름은 '이름', 'Module1', 'Module2'")
+    st.caption("오답노트 엑셀 파일 업로드 (.xlsx) — 열 이름은 '이름', 'Module1', 'Module2' (오타/혼용도 허용)")
     excel_file = st.file_uploader("오답 현황 엑셀", type="xlsx")
 
     generated_files = []
@@ -171,7 +229,15 @@ with tab1:
     if generate and img_zip and excel_file:
         try:
             m1_imgs, m2_imgs = extract_zip_to_dict(img_zip)
-            df = pd.read_excel(excel_file)
+            raw = pd.read_excel(excel_file)  # 실제 업로드 파일은 읽어야 하므로 openpyxl 필요
+            df = normalize_columns(raw)
+
+            # 필수 컬럼 검증
+            missing = {"이름", "Module1", "Module2"} - set(df.columns)
+            if missing:
+                st.error(f"필수 컬럼이 없습니다: {sorted(missing)}\n컬럼은 '이름', 'Module1', 'Module2' 여야 합니다.")
+                st.stop()
+
             output_dir = "generated_pdfs"
             os.makedirs(output_dir, exist_ok=True)
 
@@ -182,11 +248,18 @@ with tab1:
                 if pd.isna(row['Module1']) or pd.isna(row['Module2']):
                     continue
 
-                m1_nums = str(row['Module1']).split(',') if pd.notna(row['Module1']) else []
-                m2_nums = str(row['Module2']).split(',') if pd.notna(row['Module2']) else []
+                # 값 파싱
+                def to_list(x):
+                    if pd.isna(x) or str(x).strip() == "" or str(x).strip().lower() == "x":
+                        return []
+                    s = str(x).replace("，", ",").replace(";", ",")
+                    return [t.strip() for t in s.split(",") if t.strip()]
 
-                m1_list = [m1_imgs[num.strip()] for num in m1_nums if num.strip() in m1_imgs]
-                m2_list = [m2_imgs[num.strip()] for num in m2_nums if num.strip() in m2_imgs]
+                m1_nums = to_list(row['Module1'])
+                m2_nums = to_list(row['Module2'])
+
+                m1_list = [m1_imgs[n] for n in m1_nums if n in m1_imgs]
+                m2_list = [m2_imgs[n] for n in m2_nums if n in m2_imgs]
 
                 pdf_path = create_student_pdf(name, m1_list, m2_list, doc_title, output_dir)
                 generated_files.append((name, pdf_path))
@@ -214,7 +287,7 @@ with tab1:
                 st.download_button(f"📄 {selected} PDF 다운로드", f, file_name=f"{selected}.pdf")
 
 # =========================================================
-# 탭 2: 오답률 통계 생성기 (새 탭)
+# 탭 2: 오답률 통계 생성기
 # =========================================================
 with tab2:
     st.title("📊 오답률 통계 생성기")
@@ -229,7 +302,7 @@ with tab2:
 
     with st.expander("🧾 예시 입력 파일 보기 / 복사 / 다운로드"):
         ex = example_df()
-        st.caption("열 이름은 반드시 **이름, Module1, Module2** 입니다. 값은 `1,3,5` 처럼 콤마로 구분하고, 오답이 없으면 `X`, 미응시는 빈칸으로 두세요.")
+        st.caption("열 이름은 **이름, Module1, Module2** 입니다. (오타/혼용 허용, 자동 인식)\n값은 `1,3,5` 콤마 구분 / 오답 없음은 `X` / 미응시는 빈칸")
         st.dataframe(ex, use_container_width=True)
         csv_text = ex.to_csv(index=False)
         st.text_area("복사용 CSV", csv_text, height=160)
@@ -251,19 +324,16 @@ with tab2:
 
     if stat_file:
         try:
-            df_stat = pd.read_excel(stat_file)
-            # 컬럼 정규화/검증
-            df_stat.columns = [str(c).strip() for c in df_stat.columns]
+            raw = pd.read_excel(stat_file)  # 실제 업로드 읽기 (openpyxl 필요)
+            df_stat = normalize_columns(raw)
             required_cols = {"이름", "Module1", "Module2"}
             if not required_cols.issubset(df_stat.columns):
                 st.error(f"엑셀에 {required_cols} 컬럼이 모두 있어야 합니다.")
                 st.stop()
 
-            # 파싱
             df_stat["M1_parsed"] = df_stat["Module1"].apply(robust_parse_wrong_list)
             df_stat["M2_parsed"] = df_stat["Module2"].apply(robust_parse_wrong_list)
 
-            # 통계 계산
             m1_stats = compute_module_rates(df_stat["M1_parsed"], int(m1_total))
             m2_stats = compute_module_rates(df_stat["M2_parsed"], int(m2_total))
             m1_stats["문제 번호"] = m1_stats["문제 번호"].apply(lambda x: f"m1-{x}")
@@ -282,21 +352,17 @@ with tab2:
                 wb = writer.book
                 ws = writer.sheets[sheet_name]
 
-                # 제목 행
                 title_fmt = wb.add_format({"bold": True, "align": "center", "valign": "vcenter"})
                 ws.merge_range(0, 0, 0, 2, f"<{exam_title}>", title_fmt)
 
-                # 헤더
                 header_fmt = wb.add_format({"bold": True, "align": "center", "valign": "vcenter"})
                 ws.write(2, 0, "문제 번호", header_fmt)
                 ws.write(2, 1, "오답률(%)", header_fmt)
                 ws.write(2, 2, "틀린 학생 수", header_fmt)
 
-                # 가운데 정렬
                 center_fmt = wb.add_format({"align": "center", "valign": "vcenter"})
                 ws.set_column(0, 2, 14, center_fmt)
 
-                # 오답률 30% 이상 강조 (Bold + 폰트 15)
                 cond_fmt = wb.add_format({"bold": True, "font_size": 15, "align": "center", "valign": "vcenter"})
                 if len(combined) > 0:
                     ws.conditional_format(3, 1, 3 + len(combined) - 1, 1, {
