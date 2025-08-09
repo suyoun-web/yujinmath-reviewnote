@@ -363,7 +363,7 @@ with tab2:
                 center_fmt = wb.add_format({"align": "center", "valign": "vcenter"})
                 ws.set_column(0, 2, 14, center_fmt)
 
-                cond_fmt = wb.add_format({"bold": True, "font_size": 15, "align": "center", "valign": "vcenter"})
+                cond_fmt = wb.add_format({"bold": True, "font_size": 15, "align": "center", "valign": "vcenter", "bg_color": "#FFF200"})
                 if len(combined) > 0:
                     ws.conditional_format(3, 1, 3 + len(combined) - 1, 1, {
                         "type": "cell", "criteria": ">=", "value": 30, "format": cond_fmt
