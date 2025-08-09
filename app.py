@@ -22,7 +22,7 @@ if os.path.exists(FONT_REGULAR) and os.path.exists(FONT_BOLD):
     class KoreanPDF(FPDF):
         def __init__(self):
             super().__init__()
-            # 좌/우 2.54cm(25.4mm), 위 3.0cm(30mm) 여백, 아래 2.54cm
+            # 좌/우 2.54cm(25.4mm), 위 3.0cm(30mm), 아래 2.54cm
             self.set_margins(25.4, 30, 25.4)
             self.set_auto_page_break(auto=True, margin=25.4)
             self.add_font(pdf_font_name, '', FONT_REGULAR, uni=True)
@@ -35,8 +35,7 @@ else:
 # 유틸: 컬럼 정규화 (두 탭 공용)
 # ==============================
 def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """흔한 변형/오타/공백/대소문자/전각 공백까지 통일해서
-    이름, Module1, Module2 컬럼으로 매핑"""
+    """흔한 변형/오타/공백/대소문자/전각 공백까지 통일해서 이름, Module1, Module2 컬럼으로 매핑"""
     df = df.copy()
     df.columns = [str(c).strip() for c in df.columns]
 
@@ -92,7 +91,6 @@ def get_example_excel():
     output.seek(0)
     return output
 
-# 수정안 A: openpyxl 없이도 미리보기 가능하도록 예시 DF 직접 생성
 def example_input_df():
     return pd.DataFrame({
         '이름': ['홍길동', '김철수'],
@@ -208,7 +206,7 @@ with tab1:
 
     st.header("📊 예시 엑셀 양식")
     with st.expander("예시 엑셀파일 열기"):
-        # 수정안 A: openpyxl 없이 예시 DataFrame 직접 표시
+        # openpyxl 없이 예시 DataFrame 직접 표시
         st.dataframe(example_input_df(), use_container_width=True)
     example = get_example_excel()
     st.download_button("📥 예시 엑셀파일 다운로드", example, file_name="예시_오답노트_양식.xlsx")
@@ -344,7 +342,7 @@ with tab2:
             st.subheader("미리보기")
             st.dataframe(combined, use_container_width=True)
 
-            # 엑셀 저장 (제목행 + 가운데정렬 + 오답률≥30% 강조)
+            # 엑셀 저장 (제목행 + 가운데정렬 + 오답률≥30% 강조 + 노란색)
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
                 sheet_name = "오답률 통계"
@@ -352,20 +350,27 @@ with tab2:
                 wb = writer.book
                 ws = writer.sheets[sheet_name]
 
+                # 제목 행
                 title_fmt = wb.add_format({"bold": True, "align": "center", "valign": "vcenter"})
                 ws.merge_range(0, 0, 0, 2, f"<{exam_title}>", title_fmt)
 
+                # 헤더
                 header_fmt = wb.add_format({"bold": True, "align": "center", "valign": "vcenter"})
                 ws.write(2, 0, "문제 번호", header_fmt)
                 ws.write(2, 1, "오답률(%)", header_fmt)
                 ws.write(2, 2, "틀린 학생 수", header_fmt)
 
-cond_fmt = wb.add_format({
+                # 가운데 정렬
+                center_fmt = wb.add_format({"align": "center", "valign": "vcenter"})
+                ws.set_column(0, 2, 14, center_fmt)
+
+                # 오답률 30% 이상 강조 (Bold + 폰트 15 + 노란색 배경)
+                cond_fmt = wb.add_format({
                     "bold": True,
                     "font_size": 15,
                     "align": "center",
                     "valign": "vcenter",
-                    "bg_color": "#FFF200"
+                    "bg_color": "#FFF200"   # 노란색 배경
                 })
                 if len(combined) > 0:
                     ws.conditional_format(
